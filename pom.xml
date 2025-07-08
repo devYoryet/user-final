@@ -24,11 +24,17 @@
     <java.version>17</java.version>
     <spring-cloud.version>2024.0.0</spring-cloud.version>
 		<oracle.version>21.7.0.0</oracle.version>
+          <nimbus.jwt.version>9.31.1</nimbus.jwt.version> <!-- ✅ EXISTENTE EN MAVEN CENTRAL -->
+    <aws.sdk.version>2.25.36</aws.sdk.version>
 </properties>
 
     <!-- ─── DEPENDENCIAS ────────────────────────────────────────────────── -->
     <dependencies>
-
+  <dependency>
+        <groupId>software.amazon.awssdk</groupId>
+        <artifactId>cognitoidentityprovider</artifactId>
+        <version>${aws.sdk.version}</version>
+    </dependency>
         <!-- Spring básicos -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -69,7 +75,14 @@
             <version>0.11.5</version>
             <scope>runtime</scope>
         </dependency>
-
+    <!-- AWS Cognito JWT Support -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-oauth2-resource-server</artifactId>
+        </dependency>
+        
+      
+     
         <!-- Eureka -->
         <dependency>
             <groupId>org.springframework.cloud</groupId>
