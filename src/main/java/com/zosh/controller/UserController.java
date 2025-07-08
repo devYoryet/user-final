@@ -4,18 +4,25 @@
 // =============================================================================
 package com.zosh.controller;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.zosh.domain.UserRole;
 import com.zosh.exception.UserException;
 import com.zosh.mapper.UserMapper;
 import com.zosh.modal.User;
 import com.zosh.payload.dto.UserDTO;
 import com.zosh.payload.request.CreateUserFromCognitoRequest;
+import com.zosh.repository.UserRepository;
 import com.zosh.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
+
+import java.time.LocalDateTime;
+import java.util.Base64;
 import java.util.Collections;
 import java.util.List;
 
@@ -25,6 +32,7 @@ public class UserController {
 
 	private final UserService userService;
 	private final UserMapper userMapper;
+	private final UserRepository userRepository; // 🚀 AGREGAR ESTO
 
 	// =========================================================================
 	// MÉTODO PRINCIPAL CON SOPORTE COMPLETO PARA HEADERS DEL GATEWAY
@@ -59,6 +67,13 @@ public class UserController {
 		} else {
 			// 🔄 Sistema JWT anterior (Keycloak o directo)
 			System.out.println("🔄 PROCESANDO CON SISTEMA JWT ANTERIOR");
+
+			// 🚀 NUEVO: Verificar si es token de Cognito sin headers
+			if (jwt != null && jwt.contains("cognito")) {
+				System.out.println("🔍 Detectado token de Cognito sin headers del Gateway");
+				return handleCognitoTokenDirect(jwt);
+			}
+
 			try {
 				User user = userService.getUserFromJwtToken(jwt);
 				if (user != null) {
@@ -68,9 +83,53 @@ public class UserController {
 					throw new UserException("Usuario no encontrado con JWT");
 				}
 			} catch (Exception e) {
-				System.err.println("❌ Error con JWT tradicional: " + e.getMessage());
+				System.err.println("❌ Error con JWT tradicional (Keycloak no disponible): " + e.getMessage());
+
+				// 🚀 FALLBACK: Si Keycloak no está disponible, intentar parsear Cognito
+				if (jwt != null && (jwt.contains("cognito") || jwt.contains("amazonaws"))) {
+					System.out.println("🔄 Fallback: Parseando token de Cognito directamente");
+					return handleCognitoTokenDirect(jwt);
+				}
+
 				throw new UserException("Error procesando autenticación: " + e.getMessage());
 			}
+		}
+	}
+
+	// 🚀 NUEVO MÉTODO: Manejar token de Cognito directamente
+	private ResponseEntity<UserDTO> handleCognitoTokenDirect(String jwt) {
+		try {
+			System.out.println("🔍 PARSEANDO TOKEN DE COGNITO DIRECTAMENTE");
+
+			// Decodificar JWT de Cognito
+			String[] parts = jwt.replace("Bearer ", "").split("\\.");
+			if (parts.length < 2) {
+				throw new Exception("Token JWT inválido");
+			}
+
+			String payload = new String(Base64.getUrlDecoder().decode(parts[1]));
+			System.out.println("🔍 Payload decodificado: " + payload);
+
+			// Parsear JSON
+			ObjectMapper mapper = new ObjectMapper();
+			JsonNode claims = mapper.readTree(payload);
+
+			String cognitoSub = claims.get("sub").asText();
+			String email = claims.has("email") ? claims.get("email").asText() : null;
+			String name = claims.has("name") ? claims.get("name").asText() : null;
+			String role = claims.has("custom:role") ? claims.get("custom:role").asText() : "CUSTOMER";
+
+			System.out.println("📋 Datos extraídos del token:");
+			System.out.println("   Sub: " + cognitoSub);
+			System.out.println("   Email: " + email);
+			System.out.println("   Name: " + name);
+			System.out.println("   Role: " + role);
+
+			return handleCognitoUserFromGateway(cognitoSub, email, name, role);
+
+		} catch (Exception e) {
+			System.err.println("❌ Error parseando token de Cognito: " + e.getMessage());
+			throw new RuntimeException("Error procesando token de Cognito: " + e.getMessage());
 		}
 	}
 
@@ -172,10 +231,15 @@ public class UserController {
 	@GetMapping("/api/users/by-cognito-id/{cognitoUserId}")
 	public ResponseEntity<UserDTO> getUserByCognitoId(@PathVariable String cognitoUserId) {
 		try {
+			System.out.println("🔍 USER SERVICE - Buscando usuario por cognitoUserId: " + cognitoUserId);
+
 			User user = userService.findByCognitoUserId(cognitoUserId);
 			UserDTO userDTO = userMapper.mapToDTO(user);
+
+			System.out.println("✅ Usuario encontrado: " + user.getEmail());
 			return ResponseEntity.ok(userDTO);
 		} catch (Exception e) {
+			System.out.println("❌ Usuario no encontrado con cognitoUserId: " + cognitoUserId);
 			return ResponseEntity.notFound().build();
 		}
 	}
@@ -183,15 +247,72 @@ public class UserController {
 	@PostMapping("/api/users/create-from-cognito")
 	public ResponseEntity<UserDTO> createUserFromCognito(@RequestBody CreateUserFromCognitoRequest request) {
 		try {
-			System.out.println("🚀 Creando usuario desde request API:");
-			System.out.println("   Request: " + request);
+			System.out.println("🚀 USER SERVICE - Creando usuario desde Cognito:");
+			System.out.println("   CognitoUserId: " + request.getCognitoUserId());
+			System.out.println("   Email: " + request.getEmail());
+			System.out.println("   FullName: " + request.getFullName());
+			System.out.println("   Role: " + request.getRole());
 
 			User user = userService.createUserFromCognito(request);
 			UserDTO userDTO = userMapper.mapToDTO(user);
+
+			System.out.println("✅ Usuario creado exitosamente con ID: " + user.getId());
 			return ResponseEntity.ok(userDTO);
 		} catch (Exception e) {
 			System.err.println("❌ Error creando usuario: " + e.getMessage());
+			e.printStackTrace();
 			return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
 		}
 	}
+
+	@PutMapping("/api/users/{userId}/upgrade-to-salon-owner")
+	public ResponseEntity<UserDTO> upgradeToSalonOwner(@PathVariable Long userId) {
+		try {
+			System.out.println("🔧 USER SERVICE - Actualizando usuario " + userId + " a SALON_OWNER");
+
+			User user = userService.getUserById(userId);
+			if (user == null) {
+				throw new UserException("Usuario no encontrado con ID: " + userId);
+			}
+
+			// Actualizar el rol directamente
+			user.setRole(UserRole.SALON_OWNER);
+			user.setUpdatedAt(LocalDateTime.now());
+
+			User updatedUser = userRepository.save(user);
+			UserDTO userDTO = userMapper.mapToDTO(updatedUser);
+
+			System.out.println("✅ Usuario actualizado a SALON_OWNER exitosamente");
+			return ResponseEntity.ok(userDTO);
+		} catch (Exception e) {
+			System.err.println("❌ Error actualizando usuario: " + e.getMessage());
+			return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+		}
+	}
+
+	@PutMapping("/api/users/cognito/{cognitoUserId}/upgrade-to-salon-owner")
+	public ResponseEntity<UserDTO> upgradeToSalonOwnerByCognitoId(@PathVariable String cognitoUserId) {
+		try {
+			System.out.println("🔧 USER SERVICE - Actualizando usuario " + cognitoUserId + " a SALON_OWNER");
+
+			User user = userService.findByCognitoUserId(cognitoUserId);
+			if (user == null) {
+				throw new UserException("Usuario no encontrado con cognitoUserId: " + cognitoUserId);
+			}
+
+			// Actualizar el rol directamente
+			user.setRole(UserRole.SALON_OWNER);
+			user.setUpdatedAt(LocalDateTime.now());
+
+			User updatedUser = userRepository.save(user);
+			UserDTO userDTO = userMapper.mapToDTO(updatedUser);
+
+			System.out.println("✅ Usuario actualizado a SALON_OWNER exitosamente");
+			return ResponseEntity.ok(userDTO);
+		} catch (Exception e) {
+			System.err.println("❌ Error actualizando usuario: " + e.getMessage());
+			return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+		}
+	}
+
 }

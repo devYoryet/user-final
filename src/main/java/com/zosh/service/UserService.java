@@ -29,4 +29,25 @@ public interface UserService {
 	User createUserFromCognito(CreateUserFromCognitoRequest request);
 
 	void updateCognitoUserId(Long userId, String cognitoUserId) throws UserException;
+
+	/**
+	 * Actualiza el rol del usuario a SALON_OWNER cuando crea un salón
+	 */
+	User upgradeToSalonOwner(Long userId) throws UserException;
+
+	/**
+	 * Actualiza el rol del usuario a SALON_OWNER por cognitoUserId
+	 */
+	User upgradeToSalonOwnerByCognitoId(String cognitoUserId) throws UserException;
+
+	/**
+	 * Verifica si el usuario ya tiene un salón
+	 */
+	boolean hasExistingSalon(Long userId);
+
+	/**
+	 * Verifica si el usuario ya tiene un salón por cognitoUserId
+	 */
+	boolean hasExistingSalonByCognitoId(String cognitoUserId);
+
 }

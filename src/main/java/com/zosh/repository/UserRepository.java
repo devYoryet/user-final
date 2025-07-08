@@ -1,5 +1,5 @@
 // =============================================================================
-// USER REPOSITORY - Compatible con Oracle y tu código existente
+// USER SERVICE - UserRepository con método findByCognitoUserId
 // src/main/java/com/zosh/repository/UserRepository.java
 // =============================================================================
 package com.zosh.repository;
@@ -15,60 +15,31 @@ import java.util.Optional;
 @Repository
 public interface UserRepository extends JpaRepository<User, Long> {
 
-	// =========================================================================
-	// MÉTODO EXISTENTE - Mantener para compatibilidad
-	// =========================================================================
+	// Métodos existentes
 	User findByEmail(String email);
 
-	// =========================================================================
-	// 🚀 NUEVOS MÉTODOS PARA COGNITO
-	// =========================================================================
+	// 🚀 MÉTODOS PARA COGNITO
 
 	/**
-	 * Buscar usuario por su ID de Cognito
+	 * Busca usuario por cognitoUserId
 	 */
-	Optional<User> findByCognitoUserId(String cognitoUserId);
+	User findByCognitoUserId(String cognitoUserId);
 
 	/**
-	 * Buscar usuario por email (versión Optional para seguridad)
+	 * Verifica si existe un usuario con cognitoUserId
 	 */
-	@Query("SELECT u FROM User u WHERE u.email = :email")
-	Optional<User> findByEmailOptional(@Param("email") String email);
+	boolean existsByCognitoUserId(String cognitoUserId);
 
 	/**
-	 * Verificar si existe un usuario con el Cognito ID dado
+	 * Busca usuario por email ignorando mayúsculas/minúsculas
 	 */
-	@Query("SELECT CASE WHEN COUNT(u) > 0 THEN true ELSE false END FROM User u WHERE u.cognitoUserId = :cognitoUserId")
-	boolean existsByCognitoUserId(@Param("cognitoUserId") String cognitoUserId);
+	@Query("SELECT u FROM User u WHERE LOWER(u.email) = LOWER(:email)")
+	User findByEmailIgnoreCase(@Param("email") String email);
 
 	/**
-	 * Verificar si existe un usuario con el email dado
+	 * Busca usuario por cognitoUserId o email
 	 */
-	boolean existsByEmail(String email);
+	@Query("SELECT u FROM User u WHERE u.cognitoUserId = :cognitoUserId OR LOWER(u.email) = LOWER(:email)")
+	User findByCognitoUserIdOrEmail(@Param("cognitoUserId") String cognitoUserId, @Param("email") String email);
 
-	/**
-	 * Buscar usuario por username (útil para Cognito)
-	 */
-	Optional<User> findByUsername(String username);
-
-	// El método findById ya existe en JpaRepository, pero lo declaramos por
-	// claridad
-	Optional<User> findById(Long id);
 }
-
-// =============================================================================
-// NOTA: Si quieres hacer el método findByEmail más seguro sin romper código:
-// =============================================================================
-/*
- * Puedes crear una versión híbrida en UserServiceImpl:
- * 
- * @Override
- * public User findByEmail(String email) throws UserException {
- * // Usar la versión segura internamente
- * return userRepository.findByEmailOptional(email)
- * .orElseThrow(() -> new UserException("Usuario no encontrado con email: " +
- * email));
- * }
- * 
- * Y mantener el método original para compatibilidad con código existente.
- */
