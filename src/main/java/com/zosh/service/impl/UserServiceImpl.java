@@ -1,13 +1,13 @@
-// Actualizar UserServiceImpl.java en el microservicio USER
+// =============================================================================
+// USER SERVICE IMPL - Corregido para Oracle y sin password
+// src/main/java/com/zosh/service/impl/UserServiceImpl.java
+// =============================================================================
 package com.zosh.service.impl;
 
-import com.nimbusds.jwt.JWT;
-import com.nimbusds.jwt.JWTClaimsSet;
-import com.nimbusds.jwt.JWTParser;
-import com.zosh.domain.UserRole;
 import com.zosh.exception.UserException;
 import com.zosh.modal.User;
 import com.zosh.payload.dto.KeycloakUserinfo;
+import com.zosh.payload.request.CreateUserFromCognitoRequest;
 import com.zosh.repository.UserRepository;
 import com.zosh.service.KeycloakUserService;
 import com.zosh.service.UserService;
@@ -24,6 +24,10 @@ public class UserServiceImpl implements UserService {
 	private final UserRepository userRepository;
 	private final KeycloakUserService keycloakUserService;
 
+	// =========================================================================
+	// MÉTODOS EXISTENTES
+	// =========================================================================
+
 	@Override
 	public User getUserByEmail(String email) throws UserException {
 		User user = userRepository.findByEmail(email);
@@ -35,113 +39,92 @@ public class UserServiceImpl implements UserService {
 
 	@Override
 	public User getUserFromJwtToken(String jwt) throws Exception {
-		System.out.println("=== VALIDANDO JWT EN USER SERVICE ===");
-		System.out.println("JWT recibido: " + (jwt != null ? "SÍ" : "NO"));
-
-		if (jwt == null || jwt.trim().isEmpty()) {
-			throw new Exception("JWT token is null or empty");
-		}
-
-		// Remover "Bearer " si está presente
-		if (jwt.startsWith("Bearer ")) {
-			jwt = jwt.substring(7);
-		}
-
-		System.out
-				.println("JWT procesado (primeros 50 chars): " + jwt.substring(0, Math.min(50, jwt.length())) + "...");
-
-		try {
-			// Intentar primero como JWT de Cognito
-			return getUserFromCognitoJWT(jwt);
-		} catch (Exception cognitoException) {
-			System.out.println("Fallo validación Cognito: " + cognitoException.getMessage());
-
-			try {
-				// Si falla, intentar con Keycloak
-				KeycloakUserinfo userinfo = keycloakUserService.fetchUserProfileByJwt("Bearer " + jwt);
-				return userRepository.findByEmail(userinfo.getEmail());
-			} catch (Exception keycloakException) {
-				System.out.println("Fallo validación Keycloak: " + keycloakException.getMessage());
-				throw new Exception("Failed to validate JWT from both Cognito and Keycloak. " +
-						"Cognito: " + cognitoException.getMessage() +
-						", Keycloak: " + keycloakException.getMessage());
-			}
-		}
-	}
-
-	/**
-	 * Procesa JWT de Cognito y obtiene/crea usuario
-	 */
-	private User getUserFromCognitoJWT(String jwt) throws Exception {
-		try {
-			System.out.println("=== PROCESANDO JWT COGNITO ===");
-
-			// Parsear el JWT de Cognito (sin validar firma por ahora)
-			JWT jwtParsed = JWTParser.parse(jwt);
-			JWTClaimsSet claims = jwtParsed.getJWTClaimsSet();
-
-			System.out.println("JWT parseado exitosamente");
-			System.out.println("Issuer: " + claims.getIssuer());
-			System.out.println("Subject: " + claims.getSubject());
-			System.out.println("Email: " + claims.getStringClaim("email"));
-			System.out.println("Username: " + claims.getStringClaim("username"));
-
-			// Verificar que es un JWT de Cognito
-			String issuer = claims.getIssuer();
-			if (issuer == null || !issuer.contains("cognito-idp.us-east-1.amazonaws.com")) {
-				throw new Exception("Not a valid Cognito JWT. Issuer: " + issuer);
-			}
-
-			// Extraer información del usuario
-			String email = claims.getStringClaim("email");
-			String username = claims.getStringClaim("username");
-			String sub = claims.getSubject();
-
-			if (email == null) {
-				// Si no hay email en el token, intentar derivarlo del username o sub
-				email = username != null ? username + "@cognito.local" : sub + "@cognito.local";
-				System.out.println("Email no encontrado en JWT, usando: " + email);
-			}
-
-			System.out.println("Buscando usuario en BD con email: " + email);
-
-			// Buscar o crear usuario en la base de datos
-			User user = userRepository.findByEmail(email);
-
-			if (user == null) {
-				System.out.println("Usuario no existe, creando nuevo usuario");
-
-				// Crear nuevo usuario
-				user = new User();
-				user.setEmail(email);
-				user.setUsername(username != null ? username : email.split("@")[0]);
-				user.setFullName(email); // Por defecto usar email como nombre
-				user.setRole(UserRole.CUSTOMER); // Rol por defecto
-				user.setCreatedAt(LocalDateTime.now());
-				user.setUpdatedAt(LocalDateTime.now());
-
-				user = userRepository.save(user);
-				System.out.println("Usuario creado con ID: " + user.getId());
-			} else {
-				System.out.println("Usuario encontrado: " + user.getId() + " - " + user.getEmail());
-			}
-
-			return user;
-
-		} catch (Exception e) {
-			System.out.println("Error procesando JWT de Cognito: " + e.getMessage());
-			e.printStackTrace();
-			throw new Exception("Failed to process Cognito JWT: " + e.getMessage());
-		}
+		KeycloakUserinfo userinfo = keycloakUserService.fetchUserProfileByJwt(jwt);
+		return userRepository.findByEmail(userinfo.getEmail());
 	}
 
 	@Override
 	public User getUserById(Long id) throws UserException {
-		return userRepository.findById(id).orElse(null);
+		return userRepository.findById(id)
+				.orElseThrow(() -> new UserException("User not found with id: " + id));
 	}
 
 	@Override
 	public List<User> getAllUsers() {
 		return userRepository.findAll();
+	}
+
+	// =========================================================================
+	// 🚀 NUEVOS MÉTODOS PARA COGNITO
+	// =========================================================================
+
+	@Override
+	public User findByCognitoUserId(String cognitoUserId) throws UserException {
+		return userRepository.findByCognitoUserId(cognitoUserId)
+				.orElseThrow(() -> new UserException("Usuario no encontrado con Cognito ID: " + cognitoUserId));
+	}
+
+	@Override
+	public User findByEmail(String email) throws UserException {
+		User user = userRepository.findByEmail(email);
+		if (user == null) {
+			throw new UserException("Usuario no encontrado con email: " + email);
+		}
+		return user;
+	}
+
+	@Override
+	public User createUserFromCognito(CreateUserFromCognitoRequest request) {
+		System.out.println("🔧 Creando usuario desde Cognito:");
+		System.out.println("   Cognito ID: " + request.getCognitoUserId());
+		System.out.println("   Email: " + request.getEmail());
+		System.out.println("   Nombre: " + request.getFullName());
+		System.out.println("   Rol: " + request.getRole());
+
+		// ✅ USANDO BUILDER PATTERN (compatible con tu modelo)
+		User user = User.builder()
+				.cognitoUserId(request.getCognitoUserId())
+				.email(request.getEmail())
+				.fullName(request.getFullName() != null ? request.getFullName() : request.getEmail())
+				.username(request.getEmail()) // Usar email como username
+				.phone("") // Campo vacío por defecto
+				.role(parseUserRole(request.getRole()))
+				.createdAt(LocalDateTime.now())
+				.updatedAt(LocalDateTime.now())
+				.build();
+
+		User savedUser = userRepository.save(user);
+		System.out.println("✅ Usuario creado con ID: " + savedUser.getId());
+
+		return savedUser;
+	}
+
+	@Override
+	public void updateCognitoUserId(Long userId, String cognitoUserId) throws UserException {
+		User user = getUserById(userId);
+		user.setCognitoUserId(cognitoUserId);
+		user.setUpdatedAt(LocalDateTime.now());
+		userRepository.save(user);
+
+		System.out.println("✅ CognitoUserId actualizado para usuario " + userId + ": " + cognitoUserId);
+	}
+
+	// =========================================================================
+	// MÉTODO HELPER PARA PARSEAR ROLES
+	// =========================================================================
+
+	private com.zosh.domain.UserRole parseUserRole(String roleString) {
+		try {
+			if (roleString != null) {
+				// Remover prefijo ROLE_ si existe y convertir a uppercase
+				String cleanRole = roleString.replace("ROLE_", "").toUpperCase();
+				return com.zosh.domain.UserRole.valueOf(cleanRole);
+			} else {
+				return com.zosh.domain.UserRole.CUSTOMER;
+			}
+		} catch (IllegalArgumentException e) {
+			System.err.println("⚠️ Rol no válido: " + roleString + ", usando CUSTOMER por defecto");
+			return com.zosh.domain.UserRole.CUSTOMER;
+		}
 	}
 }

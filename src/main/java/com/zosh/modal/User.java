@@ -1,3 +1,7 @@
+// =============================================================================
+// USER MODEL - Actualizado para Oracle (AGREGAR SOLO COGNITO_USER_ID)
+// src/main/java/com/zosh/modal/User.java
+// =============================================================================
 package com.zosh.modal;
 
 import com.zosh.domain.UserRole;
@@ -11,10 +15,8 @@ import org.hibernate.annotations.UpdateTimestamp;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "USERS") // mismo nombre que tu script
-@SequenceGenerator( // ← enlaza con USERS_SEQ
-        name = "users_seq", sequenceName = "USERS_SEQ", // nombre real de la secuencia
-        allocationSize = 1) // 1 = NEXTVAL cada insert
+@Table(name = "USERS")
+@SequenceGenerator(name = "users_seq", sequenceName = "USERS_SEQ", allocationSize = 1)
 @Getter
 @Setter
 @NoArgsConstructor
@@ -23,7 +25,7 @@ import java.time.LocalDateTime;
 public class User {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "users_seq") // usa la secuencia
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "users_seq")
     private Long id;
 
     @NotBlank(message = "full name is mandatory")
@@ -45,6 +47,10 @@ public class User {
     @Enumerated(EnumType.STRING)
     @Column(name = "ROLE", nullable = false, length = 50)
     private UserRole role = UserRole.CUSTOMER;
+
+    // 🚀 NUEVO CAMPO PARA COGNITO
+    @Column(name = "COGNITO_USER_ID", unique = true, length = 255)
+    private String cognitoUserId;
 
     @CreationTimestamp
     @Column(name = "CREATED_AT", nullable = false, updatable = false)
