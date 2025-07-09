@@ -4,6 +4,9 @@
 // =============================================================================
 package com.zosh.service.impl;
 
+import com.nimbusds.jwt.JWT;
+import com.nimbusds.jwt.JWTClaimsSet;
+import com.nimbusds.jwt.JWTParser;
 import com.zosh.domain.UserRole;
 import com.zosh.exception.UserException;
 import com.zosh.modal.User;
@@ -40,8 +43,28 @@ public class UserServiceImpl implements UserService {
 
 	@Override
 	public User getUserFromJwtToken(String jwt) throws Exception {
-		KeycloakUserinfo userinfo = keycloakUserService.fetchUserProfileByJwt(jwt);
-		return userRepository.findByEmail(userinfo.getEmail());
+		// Quitar prefijo "Bearer " si viene con él
+		if (jwt.startsWith("Bearer ")) {
+			jwt = jwt.substring(7);
+		}
+
+		// Parsear el token usando Nimbus
+		JWT parsedJwt = JWTParser.parse(jwt);
+		JWTClaimsSet claims = parsedJwt.getJWTClaimsSet();
+
+		// Obtener el email (Cognito lo entrega por defecto si está configurado)
+		String email = claims.getStringClaim("email");
+
+		if (email == null || email.isEmpty()) {
+			throw new UserException("No se pudo obtener el email desde el token JWT.");
+		}
+
+		User user = userRepository.findByEmail(email);
+		if (user == null) {
+			throw new UserException("Usuario no encontrado con email: " + email);
+		}
+
+		return user;
 	}
 
 	@Override
