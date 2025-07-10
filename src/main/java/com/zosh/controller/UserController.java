@@ -228,22 +228,6 @@ public class UserController {
 	// MÉTODOS ADICIONALES PARA GATEWAY
 	// =========================================================================
 
-	@GetMapping("/api/users/by-cognito-id/{cognitoUserId}")
-	public ResponseEntity<UserDTO> getUserByCognitoId(@PathVariable String cognitoUserId) {
-		try {
-			System.out.println("🔍 USER SERVICE - Buscando usuario por cognitoUserId: " + cognitoUserId);
-
-			User user = userService.findByCognitoUserId(cognitoUserId);
-			UserDTO userDTO = userMapper.mapToDTO(user);
-
-			System.out.println("✅ Usuario encontrado: " + user.getEmail());
-			return ResponseEntity.ok(userDTO);
-		} catch (Exception e) {
-			System.out.println("❌ Usuario no encontrado con cognitoUserId: " + cognitoUserId);
-			return ResponseEntity.notFound().build();
-		}
-	}
-
 	@PostMapping("/api/users/create-from-cognito")
 	public ResponseEntity<UserDTO> createUserFromCognito(@RequestBody CreateUserFromCognitoRequest request) {
 		try {
@@ -311,6 +295,47 @@ public class UserController {
 			return ResponseEntity.ok(userDTO);
 		} catch (Exception e) {
 			System.err.println("❌ Error actualizando usuario: " + e.getMessage());
+			return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+		}
+	}
+
+	// 🚀 ENDPOINT 1: Buscar por Cognito ID (REQUERIDO para Gateway)
+	@GetMapping("/api/users/by-cognito-id/{cognitoId}")
+	public ResponseEntity<UserDTO> getUserByCognitoId(@PathVariable String cognitoId) {
+		System.out.println("🔍 USER SERVICE - Buscando por Cognito ID: " + cognitoId);
+
+		try {
+			User user = userRepository.findByCognitoUserId(cognitoId);
+			if (user != null) {
+				UserDTO userDTO = userMapper.mapToDTO(user);
+				System.out.println("✅ Usuario encontrado: " + user.getEmail() + " - Rol: " + user.getRole());
+				return ResponseEntity.ok(userDTO);
+			} else {
+				System.out.println("❌ Usuario no encontrado con Cognito ID: " + cognitoId);
+				return ResponseEntity.notFound().build();
+			}
+		} catch (Exception e) {
+			System.err.println("❌ Error buscando usuario: " + e.getMessage());
+			return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+		}
+	}
+
+	@GetMapping("/api/users/by-email/{email}")
+	public ResponseEntity<UserDTO> getUserByEmail(@PathVariable String email) {
+		System.out.println("🔍 USER SERVICE - Buscando por email: " + email);
+
+		try {
+			User user = userRepository.findByEmail(email);
+			if (user != null) {
+				UserDTO userDTO = userMapper.mapToDTO(user);
+				System.out.println("✅ Usuario encontrado: " + user.getEmail() + " - Rol: " + user.getRole());
+				return ResponseEntity.ok(userDTO);
+			} else {
+				System.out.println("❌ Usuario no encontrado con email: " + email);
+				return ResponseEntity.notFound().build();
+			}
+		} catch (Exception e) {
+			System.err.println("❌ Error buscando usuario: " + e.getMessage());
 			return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
 		}
 	}
